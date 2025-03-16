@@ -128,9 +128,6 @@
             justify-content: space-between;
             margin-bottom: 20px;
         }
-        .right-align {
-            text-align: right;
-        }
         .invoice-title {
             font-size: 32px;
             font-weight: bold;
@@ -147,6 +144,7 @@
             padding: 8px;
             width: 100%;
             box-sizing: border-box;
+            white-space: pre-wrap;
         }
         #preview {
             width: 210mm;
@@ -192,6 +190,7 @@
     <h1>請求書作成</h1>
     <div class="container">
         <div class="input-section">
+            <!-- 請求先ブロック内に、一人当たり金額セクションを氏名入力欄の上部に配置 -->
             <div class="form-group">
                 <label>請求先:</label>
                 <div class="radio-group">
@@ -201,6 +200,18 @@
                     <label class="radio-label">
                         <input type="radio" name="client-mode" value="multiple"> 複数人
                     </label>
+                </div>
+                <!-- ここに一人当たりの金額セクションを配置 -->
+                <div id="per-person-amount-section" class="form-group" style="display: none;">
+                    <label>一人当たりの金額：</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="per-amount-mode" value="same" checked> 同額
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="per-amount-mode" value="different"> 異なる
+                        </label>
+                    </div>
                 </div>
                 <div id="clients-container">
                     <div class="client-row" data-row="1">
@@ -220,7 +231,8 @@
                     <option value="0">0%</option>
                 </select>
             </div>
-            <div class="form-group">
+            <!-- 品名入力欄全体（ラベル含む）を items-section としてグループ化 -->
+            <div class="form-group" id="items-section">
                 <label>品名:</label>
                 <div id="items-container">
                     <div class="item-row" data-row="1">
@@ -275,7 +287,6 @@
             // クライアントモードのラジオボタン変更イベント
             document.querySelectorAll('input[name="client-mode"]').forEach(radio => {
                 radio.addEventListener('change', function () {
-                    // 複数人モードに切り替わった時に2行目以降を削除
                     if (this.value === 'multiple') {
                         const rows = document.querySelectorAll('.client-row');
                         if (rows.length > 1) {
@@ -283,18 +294,12 @@
                                 rows[i].remove();
                             }
                         }
-
-                        // 1行目のvalueを保持
                         const firstRowInput = document.querySelector('.client-row[data-row="1"] .client-name');
                         const value = firstRowInput.value;
-
-                        // 入力があれば2行目を追加
                         if (value.trim().length > 0) {
                             addNewClientRow(2);
                         }
                     }
-
-                    // 単一人モードに切り替わった時に2行目以降を削除
                     if (this.value === 'single') {
                         const rows = document.querySelectorAll('.client-row');
                         if (rows.length > 1) {
@@ -303,42 +308,38 @@
                             }
                         }
                     }
-
+                    updatePerAmountSection();
                     updatePreview();
                 });
             });
-            // クライアントモードのラジオボタン変更イベント
+            // 重複するイベントリスナーも同様に追加
             document.querySelectorAll('input[name="client-mode"]').forEach(radio => {
                 radio.addEventListener('change', function() {
-                    // 複数人モードに切り替わった時に2行目以降を削除
-                    if (this.value === 'multiple') {
-                        const rows = document.querySelectorAll('.client-row');
-                        if (rows.length > 1) {
-                            for (let i = rows.length - 1; i > 0; i--) {
-                                rows[i].remove();
+                    updatePerAmountSection();
+                    updatePreview();
+                });
+            });
+            
+            // 一人当たり金額モードの変更イベント
+            document.querySelectorAll('input[name="per-amount-mode"]').forEach(radio => {
+                radio.addEventListener('change', function () {
+                    if (this.value === 'different') {
+                        // 品名入力欄全体を非表示に（ラベル含む）
+                        document.getElementById('items-section').style.display = 'none';
+                        document.querySelectorAll('.client-row').forEach(row => {
+                            if (!row.querySelector('.client-amount')) {
+                                const amountInput = document.createElement('input');
+                                amountInput.type = 'number';
+                                amountInput.className = 'client-amount';
+                                amountInput.placeholder = '金額';
+                                amountInput.style.marginLeft = '10px';
+                                row.appendChild(amountInput);
                             }
-                        }
-                        
-                        // 1行目のvalueを保持
-                        const firstRowInput = document.querySelector('.client-row[data-row="1"] .client-name');
-                        const value = firstRowInput.value;
-                        
-                        // 入力があれば2行目を追加
-                        if (value.trim().length > 0) {
-                            addNewClientRow(2);
-                        }
+                        });
+                    } else {
+                        document.getElementById('items-section').style.display = 'block';
+                        document.querySelectorAll('.client-amount').forEach(input => input.remove());
                     }
-                    
-                    // 単一人モードに切り替わった時に2行目以降を削除
-                    if (this.value === 'single') {
-                        const rows = document.querySelectorAll('.client-row');
-                        if (rows.length > 1) {
-                            for (let i = rows.length - 1; i > 0; i--) {
-                                rows[i].remove();
-                            }
-                        }
-                    }
-                    
                     updatePreview();
                 });
             });
@@ -347,68 +348,59 @@
             updatePreview();
         });
 
+        // 複数人モード時の一人当たり金額セクションの表示切替
+        function updatePerAmountSection() {
+            const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
+            if (clientMode === 'multiple') {
+                document.getElementById('per-person-amount-section').style.display = 'block';
+            } else {
+                document.getElementById('per-person-amount-section').style.display = 'none';
+                document.getElementById('items-section').style.display = 'block';
+                document.querySelectorAll('.client-amount').forEach(input => input.remove());
+            }
+        }
+
         // クライアント名入力の処理
         function handleClientInput(input) {
             const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
-            
-            // 単一人モードの場合は処理しない
             if (clientMode === 'single') {
                 updatePreview();
                 return;
             }
-            
             const row = input.closest('.client-row');
             const rowNumber = parseInt(row.getAttribute('data-row'));
             const clientName = input.value.trim();
-            
-            // 複数人モードの処理
             if (clientMode === 'multiple') {
-                // 次の行が必要かどうかをチェック
                 if (clientName.length > 0) {
-                    // 次の行が存在しない場合は追加
                     const nextRow = document.querySelector(`.client-row[data-row="${rowNumber + 1}"]`);
                     if (!nextRow) {
                         addNewClientRow(rowNumber + 1);
                     }
                 } else {
-                    // 名前が空で2行目以降の場合、行を削除
                     if (rowNumber > 1) {
-                        // 入力値が空で、後続の行がない場合のみ削除
                         const hasNextRows = document.querySelector(`.client-row[data-row="${rowNumber + 1}"]`);
                         if (!hasNextRows) {
                             row.remove();
-                            // 行番号の再振り分け
                             updateClientRowNumbers();
                         }
                     }
                 }
-                
-                // 空行の削除処理
                 cleanupEmptyClientRows();
             }
-            
             updatePreview();
         }
 
-        // 空のクライアント行を削除
         function cleanupEmptyClientRows() {
             const rows = document.querySelectorAll('.client-row');
-            
-            // 行が2つ以上ある場合のみ処理
             if (rows.length > 1) {
                 for (let i = 1; i < rows.length; i++) {
                     const currentRow = rows[i];
                     const prevRow = rows[i-1];
-                    
                     const currentInput = currentRow.querySelector('.client-name');
                     const prevInput = prevRow.querySelector('.client-name');
-                    
-                    // 現在の行が空で、前の行も空の場合、現在の行を削除
                     if (currentInput.value.trim() === '' && prevInput.value.trim() === '') {
                         currentRow.remove();
-                        // 行番号の再振り分け
                         updateClientRowNumbers();
-                        // 再帰的に呼び出して他の空行も確認
                         cleanupEmptyClientRows();
                         break;
                     }
@@ -416,19 +408,15 @@
             }
         }
 
-        // 新しいクライアント行を追加
         function addNewClientRow(rowNumber) {
             const container = document.getElementById('clients-container');
             const newRow = document.createElement('div');
             newRow.className = 'client-row';
             newRow.setAttribute('data-row', rowNumber);
-            newRow.innerHTML = `
-                <input type="text" class="client-name" placeholder="例: 山田 太郎" oninput="handleClientInput(this)">
-            `;
+            newRow.innerHTML = `<input type="text" class="client-name" placeholder="例: 山田 太郎" oninput="handleClientInput(this)">`;
             container.appendChild(newRow);
         }
 
-        // クライアント行番号の更新
         function updateClientRowNumbers() {
             const rows = document.querySelectorAll('.client-row');
             rows.forEach((row, index) => {
@@ -436,33 +424,25 @@
             });
         }
 
-        // 品目入力の処理
         function handleItemInput(input) {
             const row = input.closest('.item-row');
             const rowNumber = parseInt(row.getAttribute('data-row'));
             const itemName = input.value.trim();
-            
-            // 次の行が必要かどうかをチェック
             if (itemName.length > 0) {
-                // 次の行が存在しない場合は追加
                 const nextRow = document.querySelector(`.item-row[data-row="${rowNumber + 1}"]`);
                 if (!nextRow) {
                     addNewRow(rowNumber + 1);
                 }
             } else {
-                // 品名が空で2行目以降の場合、行を削除
                 if (rowNumber > 1) {
-                    // 後続の行がある場合のみ削除
                     const hasNextRows = document.querySelector(`.item-row[data-row="${rowNumber + 1}"]`);
                     if (!hasNextRows) {
                         row.querySelectorAll('input').forEach(input => input.value = '');
                     } else {
                         row.remove();
-                        // 行番号の再振り分け
                         updateRowNumbers();
                     }
                 } else {
-                    // 1行目の場合は、2行目以降があれば値をクリア、なければそのまま
                     const hasNextRows = document.querySelector(`.item-row[data-row="2"]`);
                     if (!hasNextRows) {
                         row.querySelectorAll('input').forEach(input => {
@@ -475,25 +455,19 @@
                     }
                 }
             }
-            
-            // 1行目が空で、2行目以降も何も入力されていない場合は2行目を削除
             const firstRow = document.querySelector('.item-row[data-row="1"]');
             const secondRow = document.querySelector('.item-row[data-row="2"]');
-            
             if (firstRow && secondRow) {
                 const firstRowEmpty = firstRow.querySelector('.item-name').value.trim() === '';
                 const secondRowEmpty = secondRow.querySelector('.item-name').value.trim() === '';
-                
                 if (firstRowEmpty && secondRowEmpty) {
                     secondRow.remove();
                 }
             }
-            
             calculateTotals();
             updatePreview();
         }
 
-        // 新しい行を追加
         function addNewRow(rowNumber) {
             const container = document.getElementById('items-container');
             const newRow = document.createElement('div');
@@ -508,7 +482,6 @@
             container.appendChild(newRow);
         }
 
-        // 行番号の更新
         function updateRowNumbers() {
             const rows = document.querySelectorAll('.item-row');
             rows.forEach((row, index) => {
@@ -516,7 +489,6 @@
             });
         }
 
-        // 金額の計算
         function calculateAmount(input) {
             const row = input.closest('.item-row');
             const quantity = parseFloat(row.querySelector('.item-quantity').value) || 0;
@@ -527,18 +499,14 @@
             updatePreview();
         }
 
-        // 合計金額の計算
         function calculateTotals() {
             let subtotal = 0;
             document.querySelectorAll('.item-amount').forEach(input => {
                 subtotal += parseFloat(input.value) || 0;
             });
-            
             const taxRate = parseFloat(document.getElementById('tax-rate').value) / 100;
-            // 税額は小数点以下切り捨て
             const tax = Math.floor(subtotal * taxRate);
             const total = subtotal + tax;
-            
             return {
                 subtotal: subtotal,
                 taxRate: taxRate,
@@ -553,15 +521,11 @@
             const notes = document.getElementById('notes').value || '';
             const taxRate = parseFloat(document.getElementById('tax-rate').value);
             const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
-            
-            // 日付のフォーマット
             let formattedDate = '';
             if (dateInput) {
                 const date = new Date(dateInput);
                 formattedDate = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
             }
-            
-            // 品目の取得
             const items = [];
             document.querySelectorAll('.item-row').forEach(row => {
                 const name = row.querySelector('.item-name').value.trim();
@@ -574,25 +538,43 @@
                     });
                 }
             });
-            
-            // 合計の計算
             const totals = calculateTotals();
-            
-            // 単一人モードの場合
             if (clientMode === 'single') {
                 const client = document.querySelector('.client-row .client-name').value || '';
                 generateInvoicePreview(client, formattedDate, items, totals, notes);
-            } 
-            // 複数人モードの場合
-            else {
-                // 最初のクライアントのみプレビュー表示
+            } else {
+                const perAmountMode = document.querySelector('input[name="per-amount-mode"]') ? document.querySelector('input[name="per-amount-mode"]:checked').value : 'same';
                 const client = document.querySelector('.client-row .client-name').value || '';
-                generateInvoicePreview(client, formattedDate, items, totals, notes);
+                if (perAmountMode === 'different') {
+                    generateInvoicePreview(client, formattedDate, items, totals, notes);
+                } else {
+                    generateInvoicePreview(client, formattedDate, items, totals, notes);
+                }
             }
         }
 
-        // 請求書プレビューの生成
+        // プレビュー生成（「異なる」モードの場合は各クライアントの金額を表示）
         function generateInvoicePreview(client, formattedDate, items, totals, notes) {
+            if(document.querySelector('input[name="per-amount-mode"]') && document.querySelector('input[name="per-amount-mode"]:checked').value === 'different') {
+                let clientAmount = '0';
+                const currentClientRow = document.querySelector('.client-row');
+                if(currentClientRow) {
+                    const amountInput = currentClientRow.querySelector('.client-amount');
+                    clientAmount = amountInput ? (parseFloat(amountInput.value) || 0).toLocaleString() : '0';
+                }
+                const previewHTML = `
+                    <div class="invoice-header">
+                        <div class="invoice-title">請求書</div>
+                        <div class="invoice-date">請求日: ${formattedDate}</div>
+                    </div>
+                    <div class="invoice-to">${client} 様</div>
+                    <p>下記の通りご請求申し上げます。</p>
+                    <div class="total-line">請求金額　　¥${clientAmount}-</div>
+                    <div class="notes-container">備考: ${notes.replace(/\n/g, '<br>')}</div>
+                `;
+                document.getElementById('preview').innerHTML = previewHTML;
+                return;
+            }
             let previewHTML = `
                 <div class="invoice-header">
                     <div class="invoice-title">請求書</div>
@@ -613,7 +595,6 @@
                     </thead>
                     <tbody>
             `;
-            
             items.forEach(item => {
                 previewHTML += `
                     <tr>
@@ -624,15 +605,12 @@
                     </tr>
                 `;
             });
-            
             previewHTML += `
                     <tr>
                         <td colspan="3" class="right-align">小計</td>
                         <td>¥${totals.subtotal.toLocaleString()}</td>
                     </tr>
             `;
-            
-            // 税率が0%でない場合のみ税金の行を表示
             if (totals.taxRate > 0) {
                 previewHTML += `
                     <tr>
@@ -641,46 +619,33 @@
                     </tr>
                 `;
             }
-            
             previewHTML += `
                     <tr class="total-row">
                         <td colspan="3" class="right-align">合計</td>
                         <td>¥${totals.total.toLocaleString()}</td>
                     </tr>
                 </tbody>
-            </table>
-            <div class="notes-container">備考: ${notes}</div>
+                </table>
+                <div class="notes-container">備考: ${notes.replace(/\n/g, '<br>')}</div>
             `;
-            
             document.getElementById('preview').innerHTML = previewHTML;
         }
 
-        // PDFのダウンロード
         function downloadPDF() {
-            // クライアントモードを取得
             const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
-            
-            // 単一人モードの場合
             if (clientMode === 'single') {
                 updatePreview();
                 generateSinglePDF();
-            } 
-            // 複数人モードの場合
-            else {
+            } else {
                 generateMultiplePDF();
             }
         }
 
-        // 単一人モードのPDF生成
         function generateSinglePDF() {
             const { jsPDF } = window.jspdf;
-            
-            // プレビュー要素
             const element = document.getElementById('preview');
-            
-            // A4サイズのPDF生成
             html2canvas(element, {
-                scale: 2, // 高解像度
+                scale: 2,
                 useCORS: true,
                 logging: false
             }).then(canvas => {
@@ -688,42 +653,31 @@
                 const pdf = new jsPDF('p', 'mm', 'a4');
                 const pdfWidth = pdf.internal.pageSize.getWidth();
                 const pdfHeight = pdf.internal.pageSize.getHeight();
-                
-                // キャンバスの比率を維持しつつA4サイズに合わせる
                 const canvasRatio = canvas.height / canvas.width;
                 const imageWidth = pdfWidth;
                 const imageHeight = imageWidth * canvasRatio;
-                
-                // 画像がA4のサイズを超えた場合はスケーリング
                 if (imageHeight > pdfHeight) {
                     const scale = pdfHeight / imageHeight;
                     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth * scale, pdfHeight);
                 } else {
                     pdf.addImage(imgData, 'PNG', 0, 0, imageWidth, imageHeight);
                 }
-                
-                // ファイル名を生成（現在の日時を含む）
                 const today = new Date();
                 const fileName = `請求書_${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}.pdf`;
                 pdf.save(fileName);
             });
         }
 
-        // 複数人モードのPDF生成
         function generateMultiplePDF() {
             const { jsPDF } = window.jspdf;
             const dateInput = document.getElementById('date').value || '';
             const notes = document.getElementById('notes').value || '';
             const taxRate = parseFloat(document.getElementById('tax-rate').value);
-            
-            // 日付のフォーマット
             let formattedDate = '';
             if (dateInput) {
                 const date = new Date(dateInput);
                 formattedDate = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
             }
-            
-            // 品目の取得
             const items = [];
             document.querySelectorAll('.item-row').forEach(row => {
                 const name = row.querySelector('.item-name').value.trim();
@@ -736,11 +690,7 @@
                     });
                 }
             });
-            
-            // 合計の計算
             const totals = calculateTotals();
-            
-            // クライアントリストの取得（空でない行のみ）
             const clients = [];
             document.querySelectorAll('.client-row').forEach(row => {
                 const name = row.querySelector('.client-name').value.trim();
@@ -748,66 +698,44 @@
                     clients.push(name);
                 }
             });
-            
-            // クライアントがいない場合は処理を中止
             if (clients.length === 0) {
                 alert('請求先が設定されていません。');
                 return;
             }
-            
-            // PDF生成
             const pdf = new jsPDF('p', 'mm', 'a4');
             const processClient = (index) => {
                 if (index >= clients.length) {
-                    // すべてのクライアントの処理が完了したらPDFを保存
                     const today = new Date();
                     const fileName = `請求書_${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}.pdf`;
                     pdf.save(fileName);
                     return;
                 }
-                
                 const client = clients[index];
-                
-                // プレビューを更新
                 generateInvoicePreview(client, formattedDate, items, totals, notes);
-                
-                // プレビュー要素
                 const element = document.getElementById('preview');
-                
-                // A4サイズのPDF生成
                 html2canvas(element, {
-                    scale: 2, // 高解像度
+                    scale: 2,
                     useCORS: true,
                     logging: false
                 }).then(canvas => {
                     const imgData = canvas.toDataURL('image/png');
                     const pdfWidth = pdf.internal.pageSize.getWidth();
                     const pdfHeight = pdf.internal.pageSize.getHeight();
-                    
-                    // キャンバスの比率を維持しつつA4サイズに合わせる
                     const canvasRatio = canvas.height / canvas.width;
                     const imageWidth = pdfWidth;
                     const imageHeight = imageWidth * canvasRatio;
-                    
-                    // 画像がA4のサイズを超えた場合はスケーリング
                     if (imageHeight > pdfHeight) {
                         const scale = pdfHeight / imageHeight;
                         pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth * scale, pdfHeight);
                     } else {
                         pdf.addImage(imgData, 'PNG', 0, 0, imageWidth, imageHeight);
                     }
-                    
-                    // 次のクライアントのページを追加（最後のクライアント以外）
                     if (index < clients.length - 1) {
                         pdf.addPage();
                     }
-                    
-                    // 次のクライアントを処理
                     processClient(index + 1);
                 });
             };
-            
-            // 最初のクライアントから処理開始
             processClient(0);
         }
     </script>
