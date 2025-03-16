@@ -523,7 +523,11 @@
                 document.getElementById('nav-buttons').innerHTML = '';
             } else {
                 const allClientRows = Array.from(document.querySelectorAll('.client-row'));
-                const validClientRows = allClientRows.filter(row => row.querySelector('.client-name').value.trim() !== '');
+                let validClientRows = allClientRows.filter(row => row.querySelector('.client-name').value.trim() !== '');
+                // 修正: 氏名が入力されている行がなければ、既存の1行目（空欄でも）を使って初期プレビューを表示する
+                if(validClientRows.length === 0 && allClientRows.length > 0) {
+                    validClientRows = [ allClientRows[0] ];
+                }
                 if(validClientRows.length === 0){
                     document.getElementById('preview').innerHTML = '';
                     document.getElementById('nav-buttons').innerHTML = '';
