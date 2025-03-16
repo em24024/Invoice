@@ -85,6 +85,10 @@
         button:hover {
             background-color: #45a049;
         }
+        button:disabled {
+            background-color: #ccc;
+            cursor: default;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -195,7 +199,7 @@
     <h1>請求書作成</h1>
     <div class="container">
         <div class="input-section">
-            <!-- 請求先ブロック内に、一人当たり金額セクションを氏名入力欄の上部に配置 -->
+            <!-- 請求先ブロック -->
             <div class="form-group">
                 <label>請求先:</label>
                 <div class="radio-group">
@@ -236,7 +240,7 @@
                     <option value="0">0%</option>
                 </select>
             </div>
-            <!-- 品名入力欄全体（ラベル含む）を items-section としてグループ化 -->
+            <!-- 品名入力欄（グループ化） -->
             <div class="form-group" id="items-section">
                 <label>品名:</label>
                 <div id="items-container">
@@ -259,15 +263,15 @@
         </div>
         <div class="preview-section">
             <div id="preview">
-                <!-- 請求書プレビューはここに表示 -->
+                <!-- 請求書プレビュー -->
             </div>
-            <!-- 複数人の場合のプレビュー切替用ナビゲーション -->
+            <!-- 複数人時のナビゲーション -->
             <div id="nav-buttons" class="nav-buttons"></div>
         </div>
     </div>
 
     <script>
-        var currentClientIndex = 0;  // 複数人時の現在表示中のインデックス
+        var currentClientIndex = 0; // 複数人時の現在表示中のインデックス
 
         document.addEventListener('DOMContentLoaded', function() {
             const today = new Date();
@@ -279,14 +283,14 @@
             document.getElementById('update-btn').addEventListener('click', updatePreview);
             document.getElementById('download-btn').addEventListener('click', downloadPDF);
 
-            // 初期設定：単一モードにしておく
+            // 初期設定は単一モード
             const defaultRadio = document.querySelector('input[name="client-mode"][value="single"]');
             if (defaultRadio) {
                 defaultRadio.checked = true;
                 defaultRadio.dispatchEvent(new Event('change'));
             }
 
-            // 請求先モード変更時の処理
+            // 請求先モード変更時
             document.querySelectorAll('input[name="client-mode"]').forEach(radio => {
                 radio.addEventListener('change', function () {
                     if (this.value === 'multiple') {
@@ -300,7 +304,7 @@
                         if (firstRowInput && firstRowInput.value.trim().length > 0) {
                             addNewClientRow(2);
                         }
-                        currentClientIndex = 0; // 複数人に切り替えたら先頭に戻す
+                        currentClientIndex = 0; // 先頭に戻す
                     } else {
                         const rows = document.querySelectorAll('.client-row');
                         if (rows.length > 1) {
@@ -313,7 +317,7 @@
                     updatePreview();
                 });
             });
-            // 一人当たり金額モード変更時の処理
+            // 一人当たり金額モード変更時
             document.querySelectorAll('input[name="per-amount-mode"]').forEach(radio => {
                 radio.addEventListener('change', function () {
                     if (this.value === 'different') {
@@ -350,7 +354,7 @@
             }
         }
 
-        // 請求先の入力処理
+        // 請求先入力の処理（入力がある行のみ対象）
         function handleClientInput(input) {
             const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
             if (clientMode === 'single') {
@@ -485,7 +489,7 @@
             };
         }
 
-        // プレビュー更新
+        // プレビュー更新：入力済みのクライアントのみを対象
         function updatePreview() {
             const dateInput = document.getElementById('date').value || '';
             const notes = document.getElementById('notes').value || '';
@@ -510,45 +514,56 @@
             });
             const totals = calculateTotals();
             if (clientMode === 'single') {
-                const client = document.querySelector('.client-row .client-name').value || '';
+                const client = document.querySelector('.client-row .client-name').value.trim();
                 generateInvoicePreview(client, formattedDate, items, totals, notes);
                 document.getElementById('nav-buttons').innerHTML = '';
             } else {
-                const clientRows = document.querySelectorAll('.client-row');
-                if(clientRows.length === 0){
+                // 複数人の場合：フィルタリングして入力済みのクライアントのみ取得
+                var clientRows = Array.from(document.querySelectorAll('.client-row')).filter(row => {
+                    return row.querySelector('.client-name').value.trim() !== '';
+                });
+                if (clientRows.length === 0) {
                     document.getElementById('preview').innerHTML = '';
                     document.getElementById('nav-buttons').innerHTML = '';
                     return;
                 }
-                // currentClientIndex の範囲をチェック
                 if (currentClientIndex >= clientRows.length) {
                     currentClientIndex = 0;
                 }
-                const client = clientRows[currentClientIndex].querySelector('.client-name').value || '';
+                const client = clientRows[currentClientIndex].querySelector('.client-name').value.trim();
                 generateInvoicePreview(client, formattedDate, items, totals, notes);
-                // 複数の請求先がある場合、ナビゲーションボタンを表示
-                if (clientRows.length > 1) {
-                    document.getElementById('nav-buttons').innerHTML =
-                        '<button onclick="prevClient()">前へ</button> ' +
-                        '<button onclick="nextClient()">次へ</button>';
+                // ナビゲーションボタンの生成（先頭・末尾は無効化）
+                let navHTML = '';
+                if (currentClientIndex === 0) {
+                    navHTML += '<button disabled style="opacity:0.5;">前へ</button> ';
                 } else {
-                    document.getElementById('nav-buttons').innerHTML = '';
+                    navHTML += '<button onclick="prevClient()">前へ</button> ';
                 }
+                if (currentClientIndex === clientRows.length - 1) {
+                    navHTML += '<button disabled style="opacity:0.5;">次へ</button>';
+                } else {
+                    navHTML += '<button onclick="nextClient()">次へ</button>';
+                }
+                document.getElementById('nav-buttons').innerHTML = navHTML;
             }
         }
 
         function nextClient() {
-            const clientRows = document.querySelectorAll('.client-row');
-            if (clientRows.length > 0) {
-                currentClientIndex = (currentClientIndex + 1) % clientRows.length;
+            var clientRows = Array.from(document.querySelectorAll('.client-row')).filter(row => {
+                return row.querySelector('.client-name').value.trim() !== '';
+            });
+            if (clientRows.length > 0 && currentClientIndex < clientRows.length - 1) {
+                currentClientIndex++;
                 updatePreview();
             }
         }
 
         function prevClient() {
-            const clientRows = document.querySelectorAll('.client-row');
-            if (clientRows.length > 0) {
-                currentClientIndex = (currentClientIndex - 1 + clientRows.length) % clientRows.length;
+            var clientRows = Array.from(document.querySelectorAll('.client-row')).filter(row => {
+                return row.querySelector('.client-name').value.trim() !== '';
+            });
+            if (clientRows.length > 0 && currentClientIndex > 0) {
+                currentClientIndex--;
                 updatePreview();
             }
         }
@@ -558,9 +573,10 @@
             if(document.querySelector('input[name="per-amount-mode"]') &&
                document.querySelector('input[name="per-amount-mode"]:checked').value === 'different') {
                 let clientAmount = '0';
-                const currentClientRow = document.querySelectorAll('.client-row')[currentClientIndex];
-                if(currentClientRow) {
-                    const amountInput = currentClientRow.querySelector('.client-amount');
+                const clientRows = Array.from(document.querySelectorAll('.client-row')).filter(row => row.querySelector('.client-name').value.trim() !== '');
+                const currentRow = clientRows[currentClientIndex];
+                if(currentRow) {
+                    const amountInput = currentRow.querySelector('.client-amount');
                     clientAmount = amountInput ? (parseFloat(amountInput.value) || 0).toLocaleString() : '0';
                 }
                 const previewHTML = `
@@ -670,7 +686,7 @@
             });
         }
 
-        // 複数人の場合、各請求先ごとに個別のPDFを生成して保存
+        // 複数人の場合、入力済みクライアントのみ対象にして各請求先ごとに個別のPDFを生成
         function generateMultiplePDF() {
             const { jsPDF } = window.jspdf;
             const dateInput = document.getElementById('date').value || '';
@@ -694,7 +710,9 @@
                 }
             });
             const totals = calculateTotals();
-            const clientRows = document.querySelectorAll('.client-row');
+            const clientRows = Array.from(document.querySelectorAll('.client-row')).filter(row => {
+                return row.querySelector('.client-name').value.trim() !== '';
+            });
             let index = 0;
             function processClient() {
                 if (index >= clientRows.length) return;
@@ -721,7 +739,6 @@
                     const fileName = `請求書_${client || ('client' + (index+1))}.pdf`;
                     pdf.save(fileName);
                     index++;
-                    // 少し待ってから次の請求先処理（連続ダウンロード対策）
                     setTimeout(processClient, 500);
                 });
             }
