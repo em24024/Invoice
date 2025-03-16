@@ -408,12 +408,22 @@
             }
         }
 
+        // 変更済み：新規クライアント行追加時、"異なる"モードの場合は金額入力欄を追加
         function addNewClientRow(rowNumber) {
             const container = document.getElementById('clients-container');
             const newRow = document.createElement('div');
             newRow.className = 'client-row';
             newRow.setAttribute('data-row', rowNumber);
             newRow.innerHTML = `<input type="text" class="client-name" placeholder="例: 山田 太郎" oninput="handleClientInput(this)">`;
+            const perAmountMode = document.querySelector('input[name="per-amount-mode"]:checked');
+            if (perAmountMode && perAmountMode.value === 'different'){
+                const amountInput = document.createElement('input');
+                amountInput.type = 'number';
+                amountInput.className = 'client-amount';
+                amountInput.placeholder = '金額';
+                amountInput.style.marginLeft = '10px';
+                newRow.appendChild(amountInput);
+            }
             container.appendChild(newRow);
         }
 
