@@ -337,19 +337,21 @@
             updatePreview();
         });
 
-        // 複数人モード時の一人当たり金額セクションの表示切替
+        // 修正点1：一人モードに戻った際、per-amount-modeを自動で"同額"に設定
         function updatePerAmountSection() {
             const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
             if (clientMode === 'multiple') {
                 document.getElementById('per-person-amount-section').style.display = 'block';
             } else {
                 document.getElementById('per-person-amount-section').style.display = 'none';
+                // 自動で"同額"に戻す
+                document.querySelector('input[name="per-amount-mode"][value="same"]').checked = true;
                 document.getElementById('items-section').style.display = 'block';
                 document.querySelectorAll('.client-amount').forEach(input => input.remove());
             }
         }
 
-        // クライアント名入力の処理
+        // 修正点2：氏名入力欄の変更で、1文字以上なら次の空欄を追加し、余分な空欄は削除する
         function handleClientInput(input) {
             const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
             if (clientMode === 'single') {
@@ -358,22 +360,30 @@
             }
             const row = input.closest('.client-row');
             const rowNumber = parseInt(row.getAttribute('data-row'));
-            const clientName = input.value.trim();
-            if (clientMode === 'multiple') {
-                if (clientName.length > 0) {
-                    const nextRow = document.querySelector(`.client-row[data-row="${rowNumber + 1}"]`);
-                    if (!nextRow) {
-                        addNewClientRow(rowNumber + 1);
-                    }
-                } else if (rowNumber > 1) {
-                    const hasNextRows = document.querySelector(`.client-row[data-row="${rowNumber + 1}"]`);
-                    if (!hasNextRows) {
-                        row.remove();
-                        updateClientRowNumbers();
-                    }
+            const clientName = input.value;
+            if (clientName.trim().length > 0) {
+                // 1文字でも入力されていれば次の行がなければ追加
+                const nextRow = document.querySelector(`.client-row[data-row="${rowNumber + 1}"]`);
+                if (!nextRow) {
+                    addNewClientRow(rowNumber + 1);
                 }
             }
+            // 常に余分な空欄があれば削除して、空欄は1行だけ残す
+            cleanupEmptyClientRows();
             updatePreview();
+        }
+
+        function cleanupEmptyClientRows() {
+            let rows = Array.from(document.querySelectorAll('.client-row'));
+            let emptyRows = rows.filter(row => row.querySelector('.client-name').value.trim() === '');
+            if (emptyRows.length > 1) {
+                // ソートして最後の行（番号が大きいもの）だけ残す
+                emptyRows.sort((a, b) => parseInt(a.getAttribute('data-row')) - parseInt(b.getAttribute('data-row')));
+                for (let i = 0; i < emptyRows.length - 1; i++) {
+                    emptyRows[i].remove();
+                }
+                updateClientRowNumbers();
+            }
         }
 
         function addNewClientRow(rowNumber) {
@@ -483,7 +493,7 @@
             };
         }
 
-        // プレビュー更新：有効な（氏名が入力されている）クライアントのみを対象とする
+        // プレビュー更新：有効な（氏名が入力されている）クライアントのみ対象
         function updatePreview() {
             const dateInput = document.getElementById('date').value || '';
             const notes = document.getElementById('notes').value || '';
@@ -559,7 +569,7 @@
             }
         }
 
-        // プレビュー生成（per-amount-modeがdifferentの場合は各クライアントの金額を表示）
+        // プレビュー生成（per-amount-modeが"different"の場合は各クライアントの金額を表示）
         function generateInvoicePreview(client, formattedDate, items, totals, notes) {
             if(document.querySelector('input[name="per-amount-mode"]') &&
                document.querySelector('input[name="per-amount-mode"]:checked').value === 'different') {
@@ -678,7 +688,6 @@
             });
         }
 
-        // 複数人の場合、氏名が入力されている行のみを対象として各PDFを生成
         function generateMultiplePDF() {
             const { jsPDF } = window.jspdf;
             const dateInput = document.getElementById('date').value || '';
