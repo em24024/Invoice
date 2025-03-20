@@ -106,6 +106,7 @@
     .right-align {
       text-align: right;
     }
+    /* total-line は下線付きの表示（下線は border-bottom で表現） */
     .total-line {
       display: inline-block;
       border-bottom: 2px solid #000;
@@ -506,7 +507,6 @@
     function updatePreview() {
       const dateInput = document.getElementById('date').value || '';
       const notes = document.getElementById('notes').value || '';
-      const taxRate = parseFloat(document.getElementById('tax-rate').value);
       const clientMode = document.querySelector('input[name="client-mode"]:checked').value;
       let formattedDate = '';
       if (dateInput) {
@@ -515,34 +515,11 @@
       } else {
         formattedDate = `${new Date().getFullYear()}年${new Date().getMonth()+1}月${new Date().getDate()}日`;
       }
-      const items = [];
-      document.querySelectorAll('.item-row').forEach(row => {
-        const name = row.querySelector('.item-name').value.trim();
-        if (name) {
-          items.push({
-            name: name,
-            quantity: row.querySelector('.item-quantity').value.trim(),
-            price: row.querySelector('.item-price').value.trim(),
-            amount: row.querySelector('.item-amount').value.trim()
-          });
-        }
-      });
-      // manualTableフラグ：数量・単価が空で金額が入力されている場合 true
-      let manualTable = false;
-      document.querySelectorAll('.item-row').forEach(row => {
-        const qty = row.querySelector('.item-quantity').value.trim();
-        const price = row.querySelector('.item-price').value.trim();
-        const amount = row.querySelector('.item-amount').value.trim();
-        const name = row.querySelector('.item-name').value.trim();
-        if(name !== "" && qty === "" && price === "" && amount !== ""){
-          manualTable = true;
-        }
-      });
       const totals = calculateTotals();
       if (clientMode === 'single') {
         let client = document.querySelector('.client-row .client-name').value.trim();
         if (!client) { client = ""; }
-        generateInvoicePreview(client, formattedDate, items, totals, notes, manualTable);
+        generateInvoicePreview(client, formattedDate, null, totals, notes, null);
         document.getElementById('nav-buttons').innerHTML = '';
       } else {
         const allClientRows = Array.from(document.querySelectorAll('.client-row'));
@@ -560,7 +537,7 @@
         }
         let client = validClientRows[currentClientIndex].querySelector('.client-name').value.trim();
         if (!client) { client = ""; }
-        generateInvoicePreview(client, formattedDate, items, totals, notes, manualTable);
+        generateInvoicePreview(client, formattedDate, null, totals, notes, null);
         if(validClientRows.length > 1) {
           let navHtml = '';
           if(currentClientIndex === 0) {
@@ -596,11 +573,9 @@
       }
     }
 
-    // プレビュー生成。
-    // per-amount-modeが "different" の場合は各クライアントの金額のみ表示。
-    // manualTableフラグにより、数量・単価が入力されていない場合は、品名・金額の2列の表として表示し、
-    // 小計、税、合計行は必ず残す。
-    // clientIndexを引数に追加（未指定の場合は currentClientIndex を使用）
+    // プレビュー生成（per-amount-modeが "different" の場合は従来通りの処理）
+    // それ以外の場合、以下の3パターンで表示内容を出し分け、なおかつ必ず「下記の通りご請求申し上げます。」の下に
+    // 下線付きで合計金額（表示行数が1なら「請求金額」、複数なら「合計金額」）を表示します。
     function generateInvoicePreview(client, formattedDate, items, totals, notes, manualTable, clientIndex) {
       if(document.querySelector('input[name="per-amount-mode"]:checked').value === 'different') {
         let clientAmount = '0';
@@ -612,6 +587,7 @@
           const amountInput = currentRow.querySelector('.client-amount');
           clientAmount = amountInput ? (parseFloat(amountInput.value) || 0).toLocaleString() : '0';
         }
+        // per-amount-mode "different" の場合は、従来通り請求先ごとの金額のみ表示
         const previewHTML = `
           <div class="invoice-header">
             <div class="invoice-title">請求書</div>
@@ -625,6 +601,33 @@
         document.getElementById('preview').innerHTML = previewHTML;
         return;
       }
+      
+      // 以下、per-amount-mode "same" の場合
+      // DOM上の.item-rowから各アイテムを取得（品名が入力されているもの＝詳細または部分入力モード、
+      // 品名が空で金額のみ入力されているもの＝金額のみ入力モード）
+      let displayItems = [];
+      let amountOnlyItems = [];
+      document.querySelectorAll('.item-row').forEach(row => {
+        const name = row.querySelector('.item-name').value.trim();
+        const qty = row.querySelector('.item-quantity').value.trim();
+        const price = row.querySelector('.item-price').value.trim();
+        const amount = row.querySelector('.item-amount').value.trim();
+        if(name){
+            displayItems.push({
+                name: name,
+                quantity: qty,
+                price: price,
+                amount: amount
+            });
+        } else if(amount){
+            amountOnlyItems.push({ amount: amount });
+        }
+      });
+      
+      // 表示行数の判定（詳細・部分入力なら displayItems、金額のみなら amountOnlyItems）
+      let rowCount = (displayItems.length > 0) ? displayItems.length : (amountOnlyItems.length);
+      let label = (rowCount === 1 ? "請求金額" : "合計金額");
+      
       let previewHTML = `
         <div class="invoice-header">
           <div class="invoice-title">請求書</div>
@@ -632,96 +635,94 @@
         </div>
         <div class="invoice-to">${client} 様</div>
         <p>下記の通りご請求申し上げます。</p>
+        <div class="total-line">${label}　　¥${totals.total.toLocaleString()}-</div>
       `;
-      if(manualTable) {
-        previewHTML += `
-          <table>
-            <thead>
-              <tr>
-                <th>品名</th>
-                <th>金額</th>
-              </tr>
-            </thead>
-            <tbody>
-        `;
-        items.forEach(item => {
-          previewHTML += `
-              <tr>
-                <td>${item.name}</td>
-                <td>¥${Number(item.amount).toLocaleString()}</td>
-              </tr>
-          `;
-        });
-        previewHTML += `
-              <tr>
-                <td class="right-align">小計</td>
-                <td>¥${totals.subtotal.toLocaleString()}</td>
-              </tr>
-        `;
-        if (totals.taxRate > 0) {
-          previewHTML += `
-              <tr>
-                <td class="right-align">税(${totals.taxRate * 100}%)</td>
-                <td>¥${totals.tax.toLocaleString()}</td>
-              </tr>
-          `;
-        }
-        previewHTML += `
-              <tr class="total-row">
-                <td class="right-align">合計</td>
-                <td>¥${totals.total.toLocaleString()}</td>
-              </tr>
-            </tbody>
-          </table>
-        `;
-      } else {
-        previewHTML += `
-          <div class="total-line">合計金額　　¥${totals.total.toLocaleString()}-</div>
-          <br>
-          <table>
-            <thead>
-              <tr>
-                <th>品名</th>
-                <th>数量</th>
-                <th>単価</th>
-                <th>金額</th>
-              </tr>
-            </thead>
-            <tbody>
-        `;
-        items.forEach(item => {
-          previewHTML += `
-              <tr>
-                <td>${item.name}</td>
-                <td>${item.quantity}</td>
-                <td>¥${Number(item.price).toLocaleString()}</td>
-                <td>¥${Number(item.amount).toLocaleString()}</td>
-              </tr>
-          `;
-        });
-        previewHTML += `
-              <tr>
-                <td colspan="3" class="right-align">小計</td>
-                <td>¥${totals.subtotal.toLocaleString()}</td>
-              </tr>
-        `;
-        if (totals.taxRate > 0) {
-          previewHTML += `
-              <tr>
-                <td colspan="3" class="right-align">税(${totals.taxRate * 100}%)</td>
-                <td>¥${totals.tax.toLocaleString()}</td>
-              </tr>
-          `;
-        }
-        previewHTML += `
-              <tr class="total-row">
-                <td colspan="3" class="right-align">合計</td>
-                <td>¥${totals.total.toLocaleString()}</td>
-              </tr>
-            </tbody>
-          </table>
-        `;
+      
+      // 詳細入力または部分入力モードの場合、テーブル表示
+      if(displayItems.length > 0) {
+          // 詳細入力かどうかの判定：数量または単価が1件でも入力されていれば詳細入力とする
+          let detailed = displayItems.some(item => item.quantity !== "" || item.price !== "");
+          if(detailed) {
+              previewHTML += `<br>
+             <table>
+               <thead>
+                 <tr>
+                   <th>品名</th>
+                   <th>数量</th>
+                   <th>単価</th>
+                   <th>金額</th>
+                 </tr>
+               </thead>
+               <tbody>`;
+              displayItems.forEach(item => {
+                  previewHTML += `
+                 <tr>
+                   <td>${item.name}</td>
+                   <td>${item.quantity}</td>
+                   <td>¥${Number(item.price).toLocaleString()}</td>
+                   <td>¥${Number(item.amount).toLocaleString()}</td>
+                 </tr>`;
+              });
+              previewHTML += `
+                 <tr>
+                   <td colspan="3" class="right-align">小計</td>
+                   <td>¥${totals.subtotal.toLocaleString()}</td>
+                 </tr>`;
+              if(totals.taxRate > 0) {
+                  previewHTML += `
+                 <tr>
+                   <td colspan="3" class="right-align">税(${totals.taxRate * 100}%)</td>
+                   <td>¥${totals.tax.toLocaleString()}</td>
+                 </tr>`;
+              }
+              previewHTML += `
+                 <tr class="total-row">
+                   <td colspan="3" class="right-align">${label}</td>
+                   <td>¥${totals.total.toLocaleString()}</td>
+                 </tr>
+               </tbody>
+             </table>`;
+          } else {
+              // 部分入力モード：品名と金額のみの2列テーブル
+              previewHTML += `<br>
+             <table>
+               <thead>
+                 <tr>
+                   <th>品名</th>
+                   <th>金額</th>
+                 </tr>
+               </thead>
+               <tbody>`;
+              displayItems.forEach(item => {
+                  previewHTML += `
+                 <tr>
+                   <td>${item.name}</td>
+                   <td>¥${Number(item.amount).toLocaleString()}</td>
+                 </tr>`;
+              });
+              previewHTML += `
+                 <tr>
+                   <td class="right-align">小計</td>
+                   <td>¥${totals.subtotal.toLocaleString()}</td>
+                 </tr>`;
+              if(totals.taxRate > 0) {
+                  previewHTML += `
+                 <tr>
+                   <td class="right-align">税(${totals.taxRate * 100}%)</td>
+                   <td>¥${totals.tax.toLocaleString()}</td>
+                 </tr>`;
+              }
+              previewHTML += `
+                 <tr class="total-row">
+                   <td class="right-align">${label}</td>
+                   <td>¥${totals.total.toLocaleString()}</td>
+                 </tr>
+               </tbody>
+             </table>`;
+          }
       }
+      // 金額のみ入力モードの場合はテーブルは表示せず、先の下線付き金額のみとする
+      
       previewHTML += `<div class="notes-container">備考: ${notes.replace(/\n/g, '<br>')}</div>`;
       document.getElementById('preview').innerHTML = previewHTML;
     }
@@ -746,7 +747,6 @@
       const { jsPDF } = window.jspdf;
       let client = document.querySelector('.client-row .client-name').value.trim();
       if(!client) { client = ""; }
-      // プレビュー更新後にキャプチャ
       updatePreview();
       capturePreview().then(canvas => {
         const imgData = canvas.toDataURL('image/png');
@@ -777,18 +777,6 @@
         const date = new Date(dateInput);
         formattedDate = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
       }
-      const items = [];
-      document.querySelectorAll('.item-row').forEach(row => {
-        const name = row.querySelector('.item-name').value.trim();
-        if (name) {
-          items.push({
-            name: name,
-            quantity: row.querySelector('.item-quantity').value.trim(),
-            price: row.querySelector('.item-price').value.trim(),
-            amount: row.querySelector('.item-amount').value.trim()
-          });
-        }
-      });
       const totals = calculateTotals();
       const allClientRows = Array.from(document.querySelectorAll('.client-row'));
       const validClientRows = allClientRows.filter(row => row.querySelector('.client-name').value.trim() !== '');
@@ -796,7 +784,7 @@
       function processClient() {
         if (index >= validClientRows.length) return;
         const client = validClientRows[index].querySelector('.client-name').value.trim();
-        generateInvoicePreview(client, formattedDate, items, totals, notes, false, index);
+        generateInvoicePreview(client, formattedDate, null, totals, document.getElementById('notes').value, null, index);
         capturePreview().then(canvas => {
           const imgData = canvas.toDataURL('image/png');
           const pdf = new jsPDF('p', 'mm', 'a4');
@@ -836,18 +824,6 @@
         const date = new Date(dateInput);
         formattedDate = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
       }
-      const items = [];
-      document.querySelectorAll('.item-row').forEach(row => {
-        const name = row.querySelector('.item-name').value.trim();
-        if (name) {
-          items.push({
-            name: name,
-            quantity: row.querySelector('.item-quantity').value.trim(),
-            price: row.querySelector('.item-price').value.trim(),
-            amount: row.querySelector('.item-amount').value.trim()
-          });
-        }
-      });
       const totals = calculateTotals();
       const pdf = new jsPDF('p','mm','a4');
       let processIndex = 0;
@@ -862,7 +838,7 @@
           return;
         }
         const client = validClientRows[processIndex].querySelector('.client-name').value.trim();
-        generateInvoicePreview(client, formattedDate, items, totals, notes, false, processIndex);
+        generateInvoicePreview(client, formattedDate, null, totals, document.getElementById('notes').value, null, processIndex);
         capturePreview().then(canvas => {
           const imgData = canvas.toDataURL('image/png');
           const pdfWidth = pdf.internal.pageSize.getWidth();
